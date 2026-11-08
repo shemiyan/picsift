@@ -1,11 +1,22 @@
 export type JobStatus = 'pending' | 'running' | 'done' | 'failed'
 
+export type JobStatKey =
+  | 'found'
+  | 'downloaded'
+  | 'saved'
+  | 'duplicates'
+  | 'skipped_existing'
+  | 'skipped_robots'
+  | 'skipped_not_image'
+  | 'skipped_undecodable'
+  | 'failed'
+
 export interface CrawlJob {
   id: number
   seed_url: string
   max_images: number
   status: JobStatus
-  stats: Partial<Record<'found' | 'downloaded' | 'saved' | 'duplicates' | 'skipped_robots' | 'failed', number>>
+  stats: Partial<Record<JobStatKey, number>>
   error: string | null
   created_at: string
   finished_at: string | null
