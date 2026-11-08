@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from picsift.crawl import PoliteClient, extract_image_urls
+from picsift.crawl import NotAllowedError, PoliteClient, extract_image_urls, host_allowed
 
 BASE = "https://example.test/gallery/index.html"
 
@@ -102,3 +102,67 @@ def test_robots_fetched_once_per_origin():
     for path in ("/a.jpg", "/b.jpg", "/c.jpg"):
         client.allowed("https://example.test" + path)
     assert calls.count("/robots.txt") == 1
+
+
+def test_host_allowed_matching():
+    allowed = ("example.test",)
+    assert host_allowed("https://example.test/a.jpg", allowed)
+    assert host_allowed("https://cdn.example.test/a.jpg", allowed)  # 子域名也算
+    assert not host_allowed("https://example.test.evil.com/a.jpg", allowed)
+    assert not host_allowed("https://notexample.test/", allowed)
+    assert not host_allowed("http://10.0.0.8/", allowed)
+    assert host_allowed("http://10.0.0.8/", ())  # 名单为空表示不限制
+
+
+JPEG = {"status_code": 200, "headers": {"Content-Type": "image/jpeg"}}
+
+
+def host_recording_client(routes: dict, seen: list, **kw) -> PoliteClient:
+    """按 "主机+路径" 路由，并记录每个被请求过的地址。"""
+    def handler(request: httpx.Request) -> httpx.Response:
+        key = f"{request.url.host}{request.url.path}"
+        seen.append(key)
+        args = routes.get(key)
+        return httpx.Response(**args) if args is not None else httpx.Response(404)
+
+    return PoliteClient(transport=httpx.MockTransport(handler), min_interval=0, sleep=lambda s: None, **kw)
+
+
+def test_allowlist_blocks_before_any_request():
+    seen: list[str] = []
+    client = host_recording_client({}, seen, allowed_hosts=("example.test",))
+    with pytest.raises(NotAllowedError):
+        client.fetch_page("http://intranet.local/admin")
+    with pytest.raises(NotAllowedError):
+        client.download_image("http://10.0.0.8/secret.jpg")
+    assert seen == []  # 名单外的地址连 robots.txt 都不会去请求
+
+
+def test_redirect_out_of_allowlist_is_never_requested():
+    seen: list[str] = []
+    client = host_recording_client({
+        "example.test/go.jpg": {"status_code": 302, "headers": {"Location": "http://10.0.0.8/secret.jpg"}},
+        "10.0.0.8/secret.jpg": {**JPEG, "content": b"x"},
+    }, seen, allowed_hosts=("example.test",))
+    with pytest.raises(NotAllowedError):
+        client.download_image("https://example.test/go.jpg")
+    assert not any(k.startswith("10.0.0.8") for k in seen)
+
+
+def test_redirect_inside_allowlist_is_followed():
+    seen: list[str] = []
+    client = host_recording_client({
+        "example.test/old.jpg": {"status_code": 301, "headers": {"Location": "https://cdn.example.test/new.jpg"}},
+        "cdn.example.test/new.jpg": {**JPEG, "content": b"ok"},
+    }, seen, allowed_hosts=("example.test",))
+    assert client.download_image("https://example.test/old.jpg") == b"ok"
+    assert "cdn.example.test/robots.txt" in seen  # 跳到新主机后也先读它的 robots.txt
+
+
+def test_too_many_redirects():
+    seen: list[str] = []
+    client = host_recording_client({
+        "example.test/loop": {"status_code": 302, "headers": {"Location": "/loop"}},
+    }, seen)
+    with pytest.raises(httpx.TooManyRedirects):
+        client.fetch_page("https://example.test/loop")

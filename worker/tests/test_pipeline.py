@@ -67,3 +67,22 @@ def test_summary_explains_why_nothing_was_saved():
     stats = JobStats(found=6, saved=3, duplicates=1, skipped_robots=1,
                      skipped_undecodable=1, skipped_not_image=1)
     assert stats.summary() == "找到 6，保存 3，重复 1，robots 禁止 1，非图片 1，无法解码 1"
+
+
+def test_images_outside_allowlist_are_counted_separately(tmp_path):
+    page = '<img src="https://example.test/a.jpg"><img src="https://cdn.other.test/b.jpg">'
+    routes = {
+        "example.test/": {"status_code": 200, "text": page},
+        "example.test/a.jpg": {"status_code": 200, "headers": {"Content-Type": "image/jpeg"},
+                               "content": jpeg(make_scene(12))},
+    }
+
+    def handler(request):
+        args = routes.get(f"{request.url.host}{request.url.path}")
+        return httpx.Response(**args) if args else httpx.Response(404)
+
+    client = PoliteClient(transport=httpx.MockTransport(handler), min_interval=0, sleep=lambda s: None,
+                          allowed_hosts=("example.test",))
+    stats = run_job("https://example.test/", client, LocalSink(tmp_path))
+    assert (stats.saved, stats.skipped_not_allowed) == (1, 1)
+    assert "不在允许范围 1" in stats.summary()

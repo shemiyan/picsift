@@ -4,6 +4,7 @@ const SKIP_LABELS: [JobStatKey, string][] = [
   ['duplicates', '重复'],
   ['skipped_existing', '已存在'],
   ['skipped_robots', 'robots 禁止'],
+  ['skipped_not_allowed', '不在允许范围'],
   ['skipped_not_image', '非图片'],
   ['skipped_undecodable', '无法解码'],
   ['failed', '失败'],

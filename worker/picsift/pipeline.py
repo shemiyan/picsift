@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Protocol
 
 from . import imaging
-from .crawl import PoliteClient, extract_image_urls
+from .crawl import NotAllowedError, PoliteClient, extract_image_urls
 
 log = logging.getLogger(__name__)
 
@@ -25,6 +25,7 @@ class JobStats:
     saved: int = 0
     duplicates: int = 0
     skipped_robots: int = 0
+    skipped_not_allowed: int = 0
     skipped_not_image: int = 0
     skipped_undecodable: int = 0
     skipped_existing: int = 0
@@ -35,7 +36,8 @@ class JobStats:
         """一行汇总，给 worker 日志用。全部被跳过时也能看出原因；为 0 的项不显示。"""
         parts = [f"找到 {self.found}", f"保存 {self.saved}"]
         for label, value in (("重复", self.duplicates), ("已存在", self.skipped_existing),
-                             ("robots 禁止", self.skipped_robots), ("非图片", self.skipped_not_image),
+                             ("robots 禁止", self.skipped_robots), ("不在允许范围", self.skipped_not_allowed),
+                             ("非图片", self.skipped_not_image),
                              ("无法解码", self.skipped_undecodable), ("失败", self.failed)):
             if value:
                 parts.append(f"{label} {value}")
@@ -77,6 +79,9 @@ def run_job(seed_url: str, client: PoliteClient, sink: Sink, max_images: int = 3
             continue
         try:
             data = client.download_image(url)
+        except NotAllowedError:  # 必须排在 PermissionError 前面：它是 PermissionError 的子类
+            stats.skipped_not_allowed += 1
+            continue
         except PermissionError:
             stats.skipped_robots += 1
             continue

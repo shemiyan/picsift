@@ -34,7 +34,8 @@ def cmd_worker(args) -> None:
 
     settings = config.load()
     client = store.make_client(settings)
-    log.info("worker started, polling every %.0fs", settings.poll_seconds)
+    log.info("worker started, polling every %.0fs, allowed hosts: %s", settings.poll_seconds,
+             ", ".join(settings.allowed_hosts) or "不限制")
     while True:
         job = store.claim_job(client)
         if job is None:
@@ -45,8 +46,8 @@ def cmd_worker(args) -> None:
         log.info("job %s: %s", job["id"], job["seed_url"])
         sink = store.SupabaseSink(client, settings.bucket, job["user_id"], job["id"])
         try:
-            with PoliteClient(min_interval=settings.request_interval,
-                              max_bytes=settings.max_image_bytes) as http:
+            with PoliteClient(min_interval=settings.request_interval, max_bytes=settings.max_image_bytes,
+                              allowed_hosts=settings.allowed_hosts) as http:
                 stats = run_job(job["seed_url"], http, sink, max_images=job["max_images"],
                                 dup_distance=settings.dup_distance)
             store.finish_job(client, job["id"], "done", stats.as_dict())
