@@ -6,6 +6,16 @@
 
 只保存缩略图和分析结果，原图链接回源站。
 
+![图库：左侧任务面板，右侧缩略图带尺寸、清晰度和主色](docs/screenshots/gallery.jpg)
+
+## 在线体验
+
+https://shemiyan.github.io/picsift/
+
+- 前端由 GitHub Actions 构建并发布到 GitHub Pages，数据在 Supabase。国内网络访问 `*.supabase.co` 可能被重置，需要能访问外网。
+- 采集任务由 worker 处理。worker 目前跑在作者本机，没运行时新任务会停在"排队中"，效果可以看本页截图。
+- 公开环境任何人都能注册、提交任务，所以 worker 开了站点白名单，只抓练习站点 books.toscrape.com（见 #19）。
+
 ## 架构
 
 ```mermaid
@@ -41,12 +51,17 @@ flowchart LR
 - 同一站点两次请求至少间隔 1 秒；遇到 429/503 按 `Retry-After` 退避，最多重试 3 次。
 - 不信任 `Content-Type` 判断格式，按文件头识别；单张图超过 8 MB 边下边截断。
 - 图片地址从 `img` 的 `src` / `data-src` / `srcset`（取最大一张）、`picture > source`、`og:image` 里找。
+- 可选的站点白名单 `PICSIFT_ALLOWED_HOSTS`：前端公开部署后任何人都能提交任务，不加限制的话，worker 所在机器
+  能访问的内网地址也会被当成采集目标。跳转改为手动跟随，每一跳发出前都检查名单，名单外的地址一次都不会被请求。
 
 **图像分析**（`worker/picsift/imaging.py`）
 - **感知哈希（dHash）**：缩成 9×8 灰度图，逐行比较相邻像素明暗得到 64 位哈希。缩放、重新压缩后哈希几乎不变，
   两张图哈希的汉明距离 ≤ 6 判为近似重复。哈希按有符号 64 位存进 Postgres `bigint`。
-- **清晰度**：拉普拉斯算子的方差，边缘越锐利越大。先统一缩到同一尺寸再算，不同分辨率的图分数才可比。
-- **主色**：缩到 64×64 后用 k-means 聚类，固定随机种子保证同一张图结果稳定。
+- **清晰度**：拉普拉斯算子的方差，边缘越锐利越大。长边统一缩放到 512（大图缩小、小图放大）再算，
+  不同分辨率的图分数才可比；只缩不放时，100 像素宽的小图分数会偏高好几个数量级。
+- **主色**：缩到 64×64 后用 k-means 聚类，固定随机种子保证同一张图结果稳定；占比不到 3% 的过渡色不计。
+
+![近似重复：书的详情页大图（318×395）被识别为首页小封面的重复](docs/screenshots/duplicates.jpg)
 
 **数据库**（`supabase/migrations/0001_init.sql`）
 - **任务队列**：`claim_job()` 用 `FOR UPDATE SKIP LOCKED` 领取任务，多个 worker 并发也不会领到同一个；
@@ -87,6 +102,12 @@ npm install
 npm run dev
 ```
 
+## 部署
+
+- 前端：推送到 main 后由 `.github/workflows/pages.yml` 构建并发布到 GitHub Pages。Supabase 地址和 Publishable key
+  来自仓库变量 `VITE_SUPABASE_URL`、`VITE_SUPABASE_ANON_KEY`。
+- worker：`worker/Dockerfile`，运行时用 `--env-file` 传入 `.env`。公开部署前端时必须设置 `PICSIFT_ALLOWED_HOSTS`。
+
 ## 测试
 
 ```bash
@@ -105,6 +126,12 @@ worker/picsift/        crawl（爬取） imaging（分析） pipeline（流程�
 worker/tests/          pytest
 web/src/               Vue 3 前端，lib/gallery.ts 是可单测的筛选逻辑
 ```
+
+## 后续可做
+
+- 每组近似重复保留质量最好的一张作为代表。现在保留的是先抓到的那张，上面截图里组首图反而是更小、更糊的版本。
+- 查重改用多索引哈希先筛候选，避免按用户全量比较。
+- worker 部署到服务器或定时运行，线上环境不再依赖作者本机。
 
 ## 开发方式
 
