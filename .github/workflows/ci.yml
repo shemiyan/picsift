@@ -23,3 +23,21 @@ jobs:
       - run: ruff check .
       - run: pytest -q
 
+  web:
+    name: web (type-check + vitest + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # lockfile 是在国内镜像下生成的，CI 里统一换回官方源
+      - run: npm ci --replace-registry-host=always
+      - run: npm run type-check
+      - run: npm test
+      - run: npx vite build
