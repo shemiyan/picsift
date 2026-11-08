@@ -50,6 +50,7 @@ def cmd_worker(args) -> None:
                 stats = run_job(job["seed_url"], http, sink, max_images=job["max_images"],
                                 dup_distance=settings.dup_distance)
             store.finish_job(client, job["id"], "done", stats.as_dict())
+            log.info("job %s done：%s", job["id"], stats.summary())
         except Exception as exc:
             log.exception("job %s failed", job["id"])
             store.finish_job(client, job["id"], "failed", {}, str(exc)[:500])

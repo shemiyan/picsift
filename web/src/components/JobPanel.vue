@@ -2,6 +2,7 @@
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { onMounted, onUnmounted, ref } from 'vue'
 import { mergeById } from '../lib/gallery'
+import { jobSummary } from '../lib/jobs'
 import { supabase } from '../lib/supabase'
 import type { CrawlJob } from '../lib/types'
 
@@ -86,9 +87,7 @@ onUnmounted(() => {
       >
         <span class="badge" :class="job.status">{{ statusText[job.status] }}</span>
         <span class="url" :title="job.seed_url">{{ job.seed_url }}</span>
-        <span v-if="job.status === 'done'" class="muted small">
-          保存 {{ job.stats.saved ?? 0 }} · 重复 {{ job.stats.duplicates ?? 0 }} · 找到 {{ job.stats.found ?? 0 }}
-        </span>
+        <span v-if="job.status === 'done'" class="muted small">{{ jobSummary(job.stats) }}</span>
         <span v-if="job.error" class="error small">{{ job.error }}</span>
       </li>
     </ul>

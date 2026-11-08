@@ -31,6 +31,16 @@ class JobStats:
     failed: int = 0
     errors: list[str] = field(default_factory=list)
 
+    def summary(self) -> str:
+        """一行汇总，给 worker 日志用。全部被跳过时也能看出原因；为 0 的项不显示。"""
+        parts = [f"找到 {self.found}", f"保存 {self.saved}"]
+        for label, value in (("重复", self.duplicates), ("已存在", self.skipped_existing),
+                             ("robots 禁止", self.skipped_robots), ("非图片", self.skipped_not_image),
+                             ("无法解码", self.skipped_undecodable), ("失败", self.failed)):
+            if value:
+                parts.append(f"{label} {value}")
+        return "，".join(parts)
+
     def as_dict(self) -> dict:
         d = asdict(self)
         d["errors"] = d["errors"][:10]  # 只留前 10 条，避免把任务表撑大
