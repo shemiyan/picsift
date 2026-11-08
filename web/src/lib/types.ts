@@ -7,6 +7,7 @@ export type JobStatKey =
   | 'duplicates'
   | 'skipped_existing'
   | 'skipped_robots'
+  | 'skipped_not_allowed'
   | 'skipped_not_image'
   | 'skipped_undecodable'
   | 'failed'

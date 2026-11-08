@@ -20,6 +20,7 @@ class Settings:
     max_image_bytes: int = 8 * 1024 * 1024
     dup_distance: int = 6  # dHash 汉明距离 ≤ 6 视为近似重复
     poll_seconds: float = 3.0
+    allowed_hosts: tuple[str, ...] = ()  # 为空表示不限制
 
 
 def load() -> Settings:
@@ -31,4 +32,6 @@ def load() -> Settings:
         supabase_service_key=os.environ["SUPABASE_SERVICE_ROLE_KEY"],
         request_interval=float(os.getenv("PICSIFT_REQUEST_INTERVAL", "1.0")),
         dup_distance=int(os.getenv("PICSIFT_DUP_DISTANCE", "6")),
+        allowed_hosts=tuple(h.strip().lower() for h in os.getenv("PICSIFT_ALLOWED_HOSTS", "").split(",")
+                            if h.strip()),
     )
